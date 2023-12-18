@@ -1,7 +1,5 @@
 from datetime import datetime
 import gradio as gr
-from PIL import Image, ImageDraw
-import requests
 import hopsworks
 import joblib
 import pandas as pd
@@ -18,31 +16,30 @@ ordinal = joblib.load(model_dir + "/ordinal_encoder.pkl")
 scaler = joblib.load(model_dir + "/heart_scaler.pkl")
 print("Model downloaded")
 
-
 def heart(heartdisease, smoking, alcoholdrinking, stroke, diffwalking, sex, agecategory, race, diabetic, physicalactivity, genhealth, asthma, kidneydisease, skincancer, bmi, mentalhealth, physicalhealth, sleeptime):
+    # ValueError: The feature names should match those that were passed during fit.
+    # Feature names must be in the same order as they were in fit.
     df = pd.DataFrame({
-        'smoking': [smoking],
-        'alcoholdrinking': [alcoholdrinking],
-        'stroke': [stroke],
-        'diffwalking': [diffwalking],
-        'sex': [sex],
-        'agecategory': [agecategory],
-        'race': [race],
-        'diabetic': [diabetic],
-        'physicalactivity': [physicalactivity],
-        'genhealth': [genhealth],
-        'asthma': [asthma],
-        'kidneydisease': [kidneydisease],
-        'skincancer': [skincancer],
-        'bmi': [bmi],
-        'mentalhealth': [mentalhealth],
-        'physicalhealth': [physicalhealth],
-        'sleeptime': [sleeptime],
+        'Smoking': [smoking],
+        'AlcoholDrinking': [alcoholdrinking],
+        'Stroke': [stroke],
+        'DiffWalking': [diffwalking],
+        'Sex': [sex],
+        'AgeCategory': [agecategory],
+        'Race': [race],
+        'Diabetic': [diabetic],
+        'PhysicalActivity': [physicalactivity],
+        'GenHealth': [genhealth],
+        'Asthma': [asthma],
+        'KidneyDisease': [kidneydisease],
+        'SkinCancer': [skincancer],
+        'HeartDisease': ["No"]
     })
 
     def predict(df):
         df = ordinal.transform(df)
         df = scaler.transform(df)
+        df.drop(["HeartDisease"], axis=1)
         prediction = model.predict(df)
         return prediction[0]
     
@@ -67,6 +64,7 @@ demo = gr.Interface(
     title="Wine Predictive Analytics",
     description="Experiment with different wine configurations.",
     allow_flagging="never",
+    # default values are the mean values of the training dataset
 inputs=[
     gr.Dropdown(["No", "Yes", "Please predict"], label="Heart Disease"),
     gr.Dropdown(["Yes", "No"], label="Smoking"),
@@ -82,6 +80,7 @@ inputs=[
     gr.Dropdown(['Yes', 'No'], label="Asthma"),
     gr.Dropdown(['No', 'Yes'], label="Kidney Disease"),
     gr.Dropdown(['Yes', 'No'], label="Skin Cancer"),
+    # numerical: Index(['BMI', 'MentalHealth', 'PhysicalHealth', 'SleepTime'], dtype='object')
     gr.Number(label="BMI"),
     gr.Number(label="Mental Health"),
     gr.Number(label="Physical Health"),
@@ -89,4 +88,4 @@ inputs=[
 ],
     outputs="text")
 
-demo.launch(debug=False)
+demo.launch(debug=True)
