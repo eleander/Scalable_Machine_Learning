@@ -4,11 +4,12 @@ from PIL import Image, ImageDraw
 import numpy as np
 
 LOCAL=True
+HOURS = 24
 
 if LOCAL == False:
    stub = modal.Stub("heart_batch_inference")
    hopsworks_image = modal.Image.debian_slim().pip_install(["hopsworks","joblib","seaborn","scikit-learn==1.1.1","dataframe-image", "Pillow", "shap"])
-   @stub.function(image=hopsworks_image, schedule=modal.Period(days=1), secret=modal.Secret.from_name("HOPSWORKS_API_KEY"))
+   @stub.function(image=hopsworks_image, schedule=modal.Period(hours=HOURS), secret=modal.Secret.from_name("HOPSWORKS_API_KEY"))
    def f():
        g()
 
@@ -32,10 +33,9 @@ def g():
     model_dir = model.download()
     model = joblib.load(model_dir + "/heart_model.pkl")
     
-    feature_view = fs.get_feature_view(name="heart", version=1, event_time="timestamp")
+    feature_view = fs.get_feature_view(name="heart", version=1)
 
-
-    start_date = (datetime.datetime.now() - datetime.timedelta(hours=24))
+    start_date = (datetime.datetime.now() - datetime.timedelta(hours=HOURS))
     end_date = (datetime.datetime.now())
 
     batch_data = feature_view.get_batch_data(
@@ -43,8 +43,12 @@ def g():
         end_time=end_date
     )
     print(batch_data)
+
+    batch_data = batch_data.drop(['timestamp'], axis=1)
+
     y_pred = model.predict(batch_data)
 
+    raise "TACO"
     heart_fg = fs.get_feature_group(name="heart", version=1)
     df = heart_fg.read()
     y_true = df.iloc[:-y_pred.shape[0]]['heartdisease']
@@ -59,12 +63,11 @@ def g():
                                                 description="Heart Prediction/Outcome Monitoring"
                                                 )
     
-    now = datetime.now().strftime("%m/%d/%Y, %H:%M:%S")
     
     data = {
         'prediction': [y for y in y_pred],
         'label': [y for y in y_true],
-        'datetime': [now] * len(y_pred),
+        'datetime': [datetime.datetime.now() for y in y_true],
     }
     # data = {'col_1': [3, 2, 1, 0], 'col_2': ['a', 'b', 'c', 'd']}
     monitor_df = pd.DataFrame.from_dict(data)
