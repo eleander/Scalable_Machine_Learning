@@ -2,7 +2,7 @@ import datetime
 import os
 import modal
 
-LOCAL=True
+LOCAL=False
 
 if LOCAL == False:
    stub = modal.Stub("heart_daily")
@@ -33,7 +33,8 @@ def g():
     fs = project.get_feature_store()
 
     heart_sample = generate_random_heart(project)
-    heart_sample['timestamp'] = datetime.now(tz=None)
+    heart_sample['timestamp'] =  datetime.now() - pd.to_timedelta(heart_sample.index, unit='s')
+    heart_sample['timestamp'] = pd.to_datetime(heart_sample['timestamp'])
 
     heart_fg = fs.get_feature_group(name="heart",version=1)
     heart_fg.insert(heart_sample)
