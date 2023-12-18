@@ -2,6 +2,7 @@ import os
 import modal
 from PIL import Image, ImageDraw
 import numpy as np
+from sklearn.metrics import classification_report
 
 LOCAL=True
 HOURS = 24
@@ -27,92 +28,43 @@ def g():
 
     project = hopsworks.login()
     fs = project.get_feature_store()
-    
+
     mr = project.get_model_registry()
     model = mr.get_model("heart_model", version=1)
     model_dir = model.download()
     model = joblib.load(model_dir + "/heart_model.pkl")
+    scaler = joblib.load(model_dir + "/heart_scaler.pkl")
     
-    feature_view = fs.get_feature_view(name="heart", version=1)
+    fg = fs.get_feature_group(name="heart", version=1)
+    df = fg.read()
 
+    # sort by timestamp
+    df = df.sort_values(by=['timestamp'], ascending=False)
+
+    # get last HOURS of data based on timestamp
     start_date = (datetime.datetime.now() - datetime.timedelta(hours=HOURS))
     end_date = (datetime.datetime.now())
 
-    batch_data = feature_view.get_batch_data(
-        start_time=start_date,
-        end_time=end_date
-    )
-    print(batch_data)
-
-    batch_data = batch_data.drop(['timestamp'], axis=1)
-
-    y_pred = model.predict(batch_data)
-
-    raise "TACO"
-    heart_fg = fs.get_feature_group(name="heart", version=1)
-    df = heart_fg.read()
-    y_true = df.iloc[:-y_pred.shape[0]]['heartdisease']
-    print(y_true)
-
+    df['timestamp'] = pd.to_datetime(df.timestamp).dt.tz_localize(None)
+    df = df[(df['timestamp'] >= start_date) & (df['timestamp'] <= end_date)]
+    timestamp = df['timestamp']
+    df = df.drop(['timestamp'], axis=1)
     
-    dataset_api = project.get_dataset_api()    
+    y_true = df['heartdisease']
+    df = df.drop(['heartdisease'], axis=1)
+
+    y_pred = model.predict(scaler.transform(df))
     
-    monitor_fg = fs.get_or_create_feature_group(name="heart_predictions",
-                                                version=1,
-                                                primary_key=["datetime"],
-                                                description="Heart Prediction/Outcome Monitoring"
-                                                )
-    
-    
-    data = {
-        'prediction': [y for y in y_pred],
-        'label': [y for y in y_true],
-        'datetime': [datetime.datetime.now() for y in y_true],
-    }
-    # data = {'col_1': [3, 2, 1, 0], 'col_2': ['a', 'b', 'c', 'd']}
-    monitor_df = pd.DataFrame.from_dict(data)
-    print(monitor_df)
-    monitor_fg.insert(monitor_df, write_options={"wait_for_job" : False})
-    
-    history_df = monitor_fg.read()
-    # # Add our prediction to the history, as the history_df won't have it - 
-    # # the insertion was done asynchronously, so it will take ~1 min to land on App
-    history_df = pd.concat([history_df, monitor_df])
-    print(history_df)
-    raise Exception("STOP")
+    conf_matrix = confusion_matrix(y_true, y_pred)
+    true_cols = ['True: ' + str(col) for col in ["0", "1"]]
+    pred_cols = ['Pred: ' + str(col) for col in ["0", "1"]]
+    df_cm = pd.DataFrame(conf_matrix, true_cols, pred_cols)
+    cm = sns.heatmap(df_cm, annot=True)
+    fig = cm.get_figure()
+    fig.savefig("./confusion_matrix_heart.png") 
 
-
-    # df_recent = history_df.tail(4)
-    # dfi.export(df_recent, './df_recent_heart.png', table_conversion = 'matplotlib')
-    # dataset_api.upload("./df_recent_heart.png", "Resources/images", overwrite=True)
-    
-    # predictions = history_df[['prediction']]
-    # labels = history_df[['label']]
-
-    # # Only create the confusion matrix when our heart_predictions feature group has examples of all hearts
-    # columns = sorted(list(set(np.unique(labels)) | set(np.unique(predictions))))
-    # heart_count = len(columns)
-    # print("Number of different heart quality predictions or truth up to date: " + str(heart_count))
-    # # We modified the code so that the confusion matrix is generated dynamically depending on the selected labels and predictions
-    # if heart_count < 2:
-    #     # Create an empty image to avoid deployment errors in the monitor app
-    #     empty_image = Image.new('RGB', (100, 100), color = (73, 109, 137))
-    #     empty_image.save("./confusion_matrix_heart.png")
-    # else:
-    #     results = confusion_matrix(labels, predictions)
-    #     true_cols = [f'True {col}' for col in columns]
-    #     pred_cols = [f'Pred {col}' for col in columns]
-
-    #     df_cm = pd.DataFrame(results, true_cols, pred_cols)
-
-    #     cm = sns.heatmap(df_cm, annot=True)
-
-    #     fig = cm.get_figure()
-    #     fig.savefig("./confusion_matrix_heart.png")
-
-    # dataset_api.upload("./confusion_matrix_heart.png", "Resources/images", overwrite=True)
-
-
+    dataset_api = project.get_dataset_api()
+    dataset_api.upload("./confusion_matrix_heart.png", "Resources/images", overwrite=True)
 
 if __name__ == "__main__":
     if LOCAL == True :

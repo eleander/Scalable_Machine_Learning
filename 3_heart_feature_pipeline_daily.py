@@ -1,7 +1,8 @@
+import datetime
 import os
 import modal
 
-LOCAL=False
+LOCAL=True
 
 if LOCAL == False:
    stub = modal.Stub("heart_daily")
@@ -20,17 +21,19 @@ def generate_random_heart(project):
     model_dir = model.download()
     model = RegularSynthesizer.load(model_dir + '/generator.pkl')
     sample = model.sample(1)
-    print(sample)
     return sample
 
 def g():
     import hopsworks
     import pandas as pd
+    from datetime import datetime
+
 
     project = hopsworks.login()
     fs = project.get_feature_store()
 
     heart_sample = generate_random_heart(project)
+    heart_sample['timestamp'] = datetime.now(tz=None)
 
     heart_fg = fs.get_feature_group(name="heart",version=1)
     heart_fg.insert(heart_sample)
