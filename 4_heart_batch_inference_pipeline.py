@@ -1,15 +1,11 @@
-import os
 import modal
-from PIL import Image, ImageDraw
-import numpy as np
-from sklearn.metrics import classification_report
 
 LOCAL=True
 HOURS = 24
 
 if LOCAL == False:
    stub = modal.Stub("heart_batch_inference")
-   hopsworks_image = modal.Image.debian_slim().pip_install(["hopsworks","joblib","seaborn","scikit-learn==1.1.1","dataframe-image", "Pillow", "shap"])
+   hopsworks_image = modal.Image.debian_slim().pip_install(["hopsworks", "joblib", "seaborn", "scikit-learn==1.1.1", "shap"])
    @stub.function(image=hopsworks_image, schedule=modal.Period(hours=HOURS), secret=modal.Secret.from_name("HOPSWORKS_API_KEY"))
    def f():
        g()
@@ -21,7 +17,6 @@ def g():
     import datetime
     from datetime import datetime
     from sklearn.metrics import confusion_matrix
-    from matplotlib import pyplot
     import seaborn as sns
     import datetime
 
@@ -33,7 +28,7 @@ def g():
     model = mr.get_model("heart_model", version=1)
     model_dir = model.download()
     model = joblib.load(model_dir + "/heart_model.pkl")
-    scaler = joblib.load(model_dir + "/heart_scaler.pkl")
+    preprocessing_pipeline = joblib.load(model_dir + "/preprocessing_pipeline.pkl")
     
     fg = fs.get_feature_group(name="heart", version=1)
     df = fg.read()
@@ -51,10 +46,10 @@ def g():
     df = df.drop(['timestamp'], axis=1)
     
     y_true = df['heartdisease']
-    df = df.drop(['heartdisease'], axis=1)
-
-    y_pred = model.predict(scaler.transform(df))
+    df_processed = preprocessing_pipeline.transform(df)
+    y_pred = model.predict(df_processed)
     
+    # Confusion Matrix
     conf_matrix = confusion_matrix(y_true, y_pred)
     true_cols = ['True: ' + str(col) for col in ["0", "1"]]
     pred_cols = ['Pred: ' + str(col) for col in ["0", "1"]]
@@ -62,6 +57,8 @@ def g():
     cm = sns.heatmap(df_cm, annot=True)
     fig = cm.get_figure()
     fig.savefig("./confusion_matrix_heart.png") 
+
+    # C
 
     dataset_api = project.get_dataset_api()
     dataset_api.upload("./confusion_matrix_heart.png", "Resources/images", overwrite=True)

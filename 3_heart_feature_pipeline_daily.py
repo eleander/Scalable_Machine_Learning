@@ -1,5 +1,3 @@
-import datetime
-import os
 import modal
 
 LOCAL=False
@@ -25,16 +23,14 @@ def generate_random_heart(project):
 
 def g():
     import hopsworks
-    import pandas as pd
     from datetime import datetime
-
+    import pandas as pd
 
     project = hopsworks.login()
     fs = project.get_feature_store()
 
     heart_sample = generate_random_heart(project)
-    heart_sample['timestamp'] =  datetime.now() - pd.to_timedelta(heart_sample.index, unit='s')
-    heart_sample['timestamp'] = pd.to_datetime(heart_sample['timestamp'])
+    heart_sample['timestamp'] = pd.to_datetime(datetime.now())
 
     heart_fg = fs.get_feature_group(name="heart",version=1)
     heart_fg.insert(heart_sample)
