@@ -3,6 +3,7 @@ import gradio as gr
 import hopsworks
 import joblib
 import pandas as pd
+import numpy as np
 
 project = hopsworks.login()
 fs = project.get_feature_store()
@@ -15,28 +16,13 @@ model = joblib.load(model_dir + "/heart_model.pkl")
 preprocessing_pipeline = joblib.load(model_dir + "/preprocessing_pipeline.pkl")
 print("Model downloaded")
 
-    # gr.Dropdown(["No", "Yes", "Unknown"], label="Heart Disease"),
-    # gr.Dropdown(["Yes", "No"], label="Smoking"),
-    # gr.Dropdown(["No", "Yes"], label="Alcohol Drinking"),
-    # gr.Dropdown(["No", "Yes"], label="Stroke"),
-    # gr.Dropdown(["No", "Yes"], label="Diff Walking"),
-    # gr.Dropdown(["Female", "Male"], label="Sex"),
-    # gr.Dropdown(['55-59', '80 or older', '65-69', '75-79', '40-44', '70-74', '60-64', '50-54', '45-49', '18-24', '35-39', '30-34', '25-29'], label="Age Category"),
-    # gr.Dropdown(['White', 'Black', 'Asian', 'American Indian/Alaskan Native', 'Other', 'Hispanic'], label="Race"),
-    # gr.Dropdown(['Yes', 'No', 'No, borderline diabetes', 'Yes (during pregnancy)'], label="Diabetic"),
-    # gr.Dropdown(['Yes', 'No'], label="Physical Activity"),
-    # gr.Dropdown(['Very good', 'Fair', 'Good', 'Poor', 'Excellent'], label="General Health"),
-    # gr.Dropdown(['Yes', 'No'], label="Asthma"),
-    # gr.Dropdown(['No', 'Yes'], label="Kidney Disease"),
-    # gr.Dropdown(['Yes', 'No'], label="Skin Cancer"),
-    # gr.Number(label="BMI"),
-    # gr.Number(label="Mental Health"),
-    # gr.Number(label="Physical Health"),
-    # gr.Number(label="Sleep Time")
 
+def predict(df):
+    df = preprocessing_pipeline.transform(df)
+    prediction = model.predict(df)
+    return prediction[0]
 
-def heart(heartdisease, smoking, alcoholdrinking, stroke, diffwalking, sex, agecategory, race, diabetic, physicalactivity, genhealth, asthma, kidneydisease, skincancer, bmi, mentalhealth, physicalhealth, sleeptime):
-    # camel_case
+def heart(heartdisease, smoking, alcoholdrinking, stroke, diffwalking, sex, agecategory, race, diabetic, physicalactivity, genhealth, asthma, kidneydisease, skincancer, mentalhealth, physicalhealth, sleeptime, bmi):
     df = pd.DataFrame({
         'smoking': [smoking],
         'alcohol_drinking': [alcoholdrinking],
@@ -51,26 +37,26 @@ def heart(heartdisease, smoking, alcoholdrinking, stroke, diffwalking, sex, agec
         'asthma': [asthma],
         'kidney_disease': [kidneydisease],
         'skin_cancer': [skincancer],
-        'bmi': [bmi],
+        'b_m_i': [bmi],
         'mental_health': [mentalhealth],
         'physical_health': [physicalhealth],
         'sleep_time': [sleeptime],
     })
 
-    def predict(df):
-        df = preprocessing_pipeline.transform(df)
-        prediction = model.predict(df)
-        return prediction[0]
+    # Replace Unknowns with NaNs
+    # Feature pipeline has an imputer
+    df = df.replace('Unknown', np.nan)
     
-    pred = predict(df) # 0.0 or 1.0
+    pred = predict(df)
     
     if heartdisease != "Unknown":
         df['heart_disease'] = heartdisease
-        df['timestamp'] =  datetime.now() - pd.to_timedelta(df.index, unit='s')
-        df['timestamp'] = pd.to_datetime(df['timestamp'])
+        df['timestamp'] = pd.to_datetime(datetime.now())
 
-        heart_fg = fs.get_feature_group(name="heart",version=1)
+        heart_fg = fs.get_feature_group(name="heart", version=1)
         heart_fg.insert(df)
+
+        # If insert fails, insert the imputed value instead of nan
 
     if not pred:
         return "We predict that you do NOT have heart disease. (But this is not medical advice!)"
@@ -82,26 +68,25 @@ demo = gr.Interface(
     title="Heart Disease Predictive Analytics",
     description="Experiment with different heart configurations.",
     allow_flagging="never",
-    # default values are the mean values of the training dataset
 inputs=[
-    gr.Dropdown(["No", "Yes", "Unknown"], label="Heart Disease"),
-    gr.Dropdown(["Yes", "No"], label="Smoking"),
-    gr.Dropdown(["No", "Yes"], label="Alcohol Drinking"),
-    gr.Dropdown(["No", "Yes"], label="Stroke"),
-    gr.Dropdown(["No", "Yes"], label="Diff Walking"),
-    gr.Dropdown(["Female", "Male"], label="Sex"),
-    gr.Dropdown(['55-59', '80 or older', '65-69', '75-79', '40-44', '70-74', '60-64', '50-54', '45-49', '18-24', '35-39', '30-34', '25-29'], label="Age Category"),
-    gr.Dropdown(['White', 'Black', 'Asian', 'American Indian/Alaskan Native', 'Other', 'Hispanic'], label="Race"),
-    gr.Dropdown(['Yes', 'No', 'No, borderline diabetes', 'Yes (during pregnancy)'], label="Diabetic"),
-    gr.Dropdown(['Yes', 'No'], label="Physical Activity"),
-    gr.Dropdown(['Very good', 'Fair', 'Good', 'Poor', 'Excellent'], label="General Health"),
-    gr.Dropdown(['Yes', 'No'], label="Asthma"),
-    gr.Dropdown(['No', 'Yes'], label="Kidney Disease"),
-    gr.Dropdown(['Yes', 'No'], label="Skin Cancer"),
+    gr.Dropdown(['Unknown', 'No', 'Yes'], label="Heart Disease (TARGET)"),
+    gr.Dropdown(['Unknown', 'No', 'Yes'], label="Smoking"),
+    gr.Dropdown(['Unknown', 'No', 'Yes'], label="Alcohol Drinking"),
+    gr.Dropdown(['Unknown', 'No', 'Yes'], label="Stroke"),
+    gr.Dropdown(['Unknown', 'No', 'Yes'], label="Diff Walking"),
+    gr.Dropdown(['Unknown', 'Female', 'Male'], label="Sex"),
+    gr.Dropdown(['Unknown', '18-24', '25-29', '30-34', '35-39', '40-44', '45-49', '50-54', '55-59', '60-64', '65-69', '70-74', '75-79', '80 or older'], label="Age Category"),
+    gr.Dropdown(['Unknown', 'American Indian/Alaskan Native', 'Asian', 'Black', 'Hispanic', 'Other', 'White'], label="Race"),
+    gr.Dropdown(['Unknown', 'No', 'No, borderline diabetes', 'Yes', 'Yes (during pregnancy)'], label="Diabetic"),
+    gr.Dropdown(['Unknown', 'No', 'Yes'], label="Physical Activity"),
+    gr.Dropdown(['Unknown', 'Poor', 'Fair', 'Good', 'Very good', 'Excellent'], label="General Health"),
+    gr.Dropdown(['Unknown', 'No', 'Yes'], label="Asthma"),
+    gr.Dropdown(['Unknown', 'No', 'Yes'], label="Kidney Disease"),
+    gr.Dropdown(['Unknown', 'No', 'Yes'], label="Skin Cancer"),
+    gr.Number(label="Mental Health", minimum=0, maximum=30),
+    gr.Number(label="Physical Health", minimum=0, maximum=30),
+    gr.Number(label="Sleep Time", minimum=1, maximum=24),
     gr.Number(label="BMI"),
-    gr.Number(label="Mental Health"),
-    gr.Number(label="Physical Health"),
-    gr.Number(label="Sleep Time")
 ],
     outputs="text")
 
