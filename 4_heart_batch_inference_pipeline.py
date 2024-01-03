@@ -1,12 +1,12 @@
 import modal
 
-LOCAL=True
+LOCAL=False
 HOURS=24
 IMAGE_FOLDER="monitor"
 
 if LOCAL == False:
    stub = modal.Stub("heart_batch_inference")
-   hopsworks_image = modal.Image.debian_slim().pip_install(["hopsworks", "dataframe_image", "joblib", "seaborn", "scikit-learn==1.3.2", "shap"])
+   hopsworks_image = modal.Image.debian_slim().pip_install(["hopsworks", "dataframe-image", "joblib", "seaborn", "scikit-learn==1.3.2", "shap"])
    @stub.function(image=hopsworks_image, schedule=modal.Period(hours=HOURS), secret=modal.Secret.from_name("HOPSWORKS_API_KEY"))
    def f():
        g()
@@ -39,13 +39,24 @@ def g():
 
     # Filter so we get only last data added
     now = datetime.now()
-    df = df[(df['timestamp'] >= (pd.to_datetime(now) - timedelta(hours=HOURS)))]
+    diff = now - timedelta(hours=HOURS)
+
+    df['clean_timestamp'] = pd.to_datetime(df.timestamp).dt.tz_localize(None)
+    df = df[df['clean_timestamp'] >= diff]    
+
+    # remove clean_timestamp 
+    df = df.drop(columns=['clean_timestamp'])
     
+    # Hacky fix due to Hopsworks Magic
+    df["timestamp"] = df['timestamp'] - pd.to_timedelta(0 * df.index, unit='s')
+
     y_true = df['heart_disease']
     X = preprocessing_pipeline.transform(df)
     y_pred = model.predict(X)
 
     # Store predictions and truth
+    print("Storing predictions in Monitor_df")
+    print(df)
     monitor_df = pd.DataFrame({"pred": y_pred, "true": y_true, "timestamp": df['timestamp']})
     monitor_fg = fs.get_or_create_feature_group(
         name="heart_predictions",
@@ -54,7 +65,9 @@ def g():
         description="Heart Monitoring Predictions",
         event_time="timestamp",
     )
-    monitor_fg.insert(monitor_df, write_options={"wait_for_job": False})
+    # monitor_fg.insert(monitor_df, write_options={"wait_for_job": False})
+
+    print("Finished insertion")
 
     # Confusion Matrix
     conf_matrix = confusion_matrix(y_true, y_pred)
@@ -64,44 +77,33 @@ def g():
     cm = sns.heatmap(df_cm, annot=True)
     fig = cm.get_figure()
     fig.savefig(f"{IMAGE_FOLDER}/confusion_matrix_heart.png")
+    print("Added confusion matrix")
 
     # Historical data
     hist_df = monitor_fg.read()
     concat_df = pd.concat([hist_df, monitor_df])
-    dfi.export(concat_df.tail(5), f"{IMAGE_FOLDER}/df_recent.png")
+    dfi.export(concat_df.tail(5), f"{IMAGE_FOLDER}/df_recent_heart.png", table_conversion = 'matplotlib')
+    print("Added historical data")
     
     # Explainability
     shap.initjs()
 
-    explainer = shap.TreeExplainer(model)
-    shap_values = explainer.shap_values(concat_df, approximate=True)
-    shap.summary_plot(shap_values[1], concat_df, show=False)
-    plt.savefig(f"{IMAGE_FOLDER}/shap.png")
-
-    # Historical metrics
-    # Create temporary column for grouping by groups of HOURS from now
-    concat_df["groups"] = (now - concat_df['timestamp']).apply(lambda x: x.total_seconds()) // (HOURS * 3600)
-
-    def groupby_fn(x):
-        min_timestamp = x["timestamp"].min()
-        accuracy = accuracy_score(x["true"], x["pred"])
-        f1_weighted = f1_score(x["true"], x["pred"], average="weighted")
-        return pd.Series({"timestamp": min_timestamp, "accuracy": accuracy, "f1_weighted": f1_weighted})
-
-    group_df = concat_df.groupby(by="groups", group_keys=False).apply(groupby_fn).set_index("timestamp", drop=True)
-    ax = group_df.plot()
-    ax.set_ylabel("Score")
-    ax.set_ylim(0, 1)
-    ax.set_xlabel("Timestamp")
-    fig = ax.get_figure()
-    fig.savefig(f"{IMAGE_FOLDER}/metrics.png")
+    concat_explain_df = concat_df.drop(columns=['timestamp'])
+    
+    explainer = shap.TreeExplainer(model)    
+    shap_values = explainer.shap_values(concat_explain_df, approximate=True, check_additivity=False)
+    print("Successfully trained shap")
+    shap.summary_plot(shap_values[1], concat_explain_df, show=False)
+    print("Created summary_plot")
+    plt.savefig(f"{IMAGE_FOLDER}/shap_heart.png")
+    print("Added explainability")
 
     # Upload images
+    print("Began uploading images....")
     dataset_api = project.get_dataset_api()
     dataset_api.upload(f"{IMAGE_FOLDER}/confusion_matrix_heart.png", "Resources/images", overwrite=True)
     dataset_api.upload(f"{IMAGE_FOLDER}/df_recent_heart.png", "Resources/images", overwrite=True)
     dataset_api.upload(f"{IMAGE_FOLDER}/shap_heart.png", "Resources/images", overwrite=True)
-    dataset_api.upload(f"{IMAGE_FOLDER}/metrics_heart.png", "Resources/images", overwrite=True)
 
 if __name__ == "__main__":
     if LOCAL == True :
