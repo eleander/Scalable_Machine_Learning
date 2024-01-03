@@ -6,7 +6,7 @@ IMAGE_FOLDER="monitor"
 
 if LOCAL == False:
    stub = modal.Stub("heart_batch_inference")
-   hopsworks_image = modal.Image.debian_slim().pip_install(["hopsworks", "joblib", "seaborn", "scikit-learn==1.1.1", "shap"])
+   hopsworks_image = modal.Image.debian_slim().pip_install(["hopsworks", "dataframe_image", "joblib", "seaborn", "scikit-learn==1.3.2", "shap"])
    @stub.function(image=hopsworks_image, schedule=modal.Period(hours=HOURS), secret=modal.Secret.from_name("HOPSWORKS_API_KEY"))
    def f():
        g()
@@ -19,7 +19,6 @@ def g():
     import dataframe_image as dfi
     from sklearn.metrics import confusion_matrix, accuracy_score, f1_score
     import seaborn as sns
-    import datetime
     import shap
     import os
     import matplotlib.pyplot as plt
@@ -30,7 +29,7 @@ def g():
     fs = project.get_feature_store()
 
     mr = project.get_model_registry()
-    model = mr.get_model("heart_model", version=1)
+    model = mr.get_model("heart_model_v1", version=1)
     model_dir = model.download()
     model = joblib.load(model_dir + "/heart_model.pkl")
     preprocessing_pipeline = joblib.load(model_dir + "/preprocessing_pipeline.pkl")
@@ -40,7 +39,7 @@ def g():
 
     # Filter so we get only last data added
     now = datetime.now()
-    df = df[(df['timestamp'] >= (now - timedelta(hours=HOURS)))]
+    df = df[(df['timestamp'] >= (pd.to_datetime(now) - timedelta(hours=HOURS)))]
     
     y_true = df['heart_disease']
     X = preprocessing_pipeline.transform(df)

@@ -5,7 +5,7 @@ N_SAMPLES=4
 
 if LOCAL == False:
    stub = modal.Stub("heart_daily")
-   image = modal.Image.debian_slim().pip_install(["hopsworks", "ydata-synthetic==1.1.0", "pandas", "scikit-learn", "joblib", "numpy"])
+   image = modal.Image.debian_slim().pip_install(["hopsworks", "ydata-synthetic==1.3.2", "pandas", "scikit-learn==1.3.2", "joblib", "numpy"])
 
    @stub.function(image=image, schedule=modal.Period(days=1), secret=modal.Secret.from_name("id2223"))
    def f():
@@ -58,9 +58,13 @@ def generate_random_heart(project):
     mr = project.get_model_registry()
     model = mr.get_model("heart_generator", version=1)
     model_dir = model.download()
+    print("Successfully downloaded model")
 
     model = RegularSynthesizer.load(model_dir + '/heart_generator.pkl')
+    print("Successfully loaded model")
+
     inverse_pipeline = InversePipeline.load(model_dir + '/inverse_pipeline.pkl')
+    print("Successfully loaded inverse pipeline")
 
     samples = model.sample(N_SAMPLES)
     y, X = samples['heart_disease'], samples.drop(columns=['heart_disease'])
