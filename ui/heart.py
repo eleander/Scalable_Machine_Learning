@@ -15,14 +15,16 @@ model = joblib.load(model_dir + "/heart_model.pkl")
 preprocessing_pipeline = joblib.load(model_dir + "/preprocessing_pipeline.pkl")
 print("Model downloaded")
 
-generator = mr.get_model("heart_generator", version=1)
-generator_dir = generator.download()
-inverse_pipeline = joblib.load(generator_dir + "/inverse_pipeline.pkl")
-print("Inverse pipeline downloaded")
-
 def impute(df):
-    df = preprocessing_pipeline.transform(df)
-    df = inverse_pipeline.transform(df)
+    _, numerical_pipeline, numerical = preprocessing_pipeline.transformers_[0]
+    _, categorical_pipeline, categorical = preprocessing_pipeline.transformers_[1]
+
+    numerical_imputer = numerical_pipeline.named_steps['imputer']
+    categorical_imputer = categorical_pipeline.named_steps['imputer']
+
+    df[numerical] = numerical_imputer.transform(df[numerical])
+    df[categorical] = categorical_imputer.transform(df[categorical])
+
     return df
 
 def predict(df):
@@ -58,10 +60,8 @@ def heart(heartdisease, smoking, alcoholdrinking, stroke, diffwalking, sex, agec
     if heartdisease != "Unknown":
         df = impute(df)
 
-        df['heart_disease'] = heartdisease
+        df['heart_disease'] = np.float64(heartdisease == "Yes")
         df['timestamp'] = pd.to_datetime(datetime.now())
-        df["timestamp"] = df['timestamp'] - pd.to_timedelta(0 * df.index, unit='s')
-
 
         heart_fg = fs.get_feature_group(name="heart", version=1)
         heart_fg.insert(df)
