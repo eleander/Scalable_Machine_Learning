@@ -8,20 +8,22 @@ import numpy as np
 project = hopsworks.login()
 fs = project.get_feature_store()
 
-
-# FOR DEPLOY
-# mr = project.get_model_registry()
-# model = mr.get_model("heart_model_v1", version=1)
-# model_dir = model.download()
-# model = joblib.load(model_dir + "/heart_model.pkl")
-# preprocessing_pipeline = joblib.load(model_dir + "/preprocessing_pipeline.pkl")
-# print("Model downloaded")
-
-# TEST LOCALLY
-model_dir = "../../heart_model/"
+mr = project.get_model_registry()
+model = mr.get_model("heart_model_v1", version=1)
+model_dir = model.download()
 model = joblib.load(model_dir + "/heart_model.pkl")
 preprocessing_pipeline = joblib.load(model_dir + "/preprocessing_pipeline.pkl")
+print("Model downloaded")
 
+generator = mr.get_model("heart_generator", version=1)
+generator_dir = generator.download()
+inverse_pipeline = joblib.load(generator_dir + "/inverse_pipeline.pkl")
+print("Inverse pipeline downloaded")
+
+def impute(df):
+    df = preprocessing_pipeline.transform(df)
+    df = inverse_pipeline.transform(df)
+    return df
 
 def predict(df):
     df = preprocessing_pipeline.transform(df)
@@ -54,12 +56,12 @@ def heart(heartdisease, smoking, alcoholdrinking, stroke, diffwalking, sex, agec
     df = df.replace('Unknown', np.nan)
         
     if heartdisease != "Unknown":
+        df = impute(df)
+
         df['heart_disease'] = heartdisease
         df['timestamp'] = pd.to_datetime(datetime.now())
+        df["timestamp"] = df['timestamp'] - pd.to_timedelta(0 * df.index, unit='s')
 
-        check_df = df.drop(columns=['heart_disease', 'timestamp'])
-        if check_df.isnull().values.any():
-            return "Please fill out all fields."
 
         heart_fg = fs.get_feature_group(name="heart", version=1)
         heart_fg.insert(df)
@@ -100,4 +102,4 @@ inputs=[
 ],
     outputs="text")
 
-demo.launch(debug=False)
+demo.launch(debug=True)
