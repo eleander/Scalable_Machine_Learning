@@ -57,16 +57,34 @@ def heart(heartdisease, smoking, alcoholdrinking, stroke, diffwalking, sex, agec
     # Feature pipeline has an imputer
     df = df.replace('Unknown', np.nan)
         
+    store_data = False
+
     if heartdisease != "Unknown":
         df = impute(df)
 
         df['heart_disease'] = np.float64(heartdisease == "Yes")
         df['timestamp'] = pd.to_datetime(datetime.now())
+        # Hacky fix due to Hopsworks Magic
+        df["timestamp"] = df['timestamp'] - pd.to_timedelta(0 * df.index, unit='s')
+        
+        # heart_fg = fs.get_feature_group(name="heart", version=1)
+        heart_fg = fs.get_or_create_feature_group(
+        name="heart_user_dataset",
+        version=1,
+        primary_key=df.columns,
+        description="Heart Dataset of User Input Values",
+        event_time="timestamp",
+        )
 
-        heart_fg = fs.get_feature_group(name="heart", version=1)
-        heart_fg.insert(df)
+        try:
+            heart_fg.insert(df, write_options={"wait_for_job": False})
+        except Exception as e:
+            print(f"An error occurred: {e}")
 
-        # If insert fails, insert the imputed value instead of nan
+        store_data = True
+    
+    if store_data:
+        return "Thank you for submitting your data. We will use it to improve our model."
 
     pred = predict(df)
 

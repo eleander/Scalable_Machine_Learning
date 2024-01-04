@@ -65,7 +65,7 @@ def g():
         description="Heart Monitoring Predictions",
         event_time="timestamp",
     )
-    # monitor_fg.insert(monitor_df, write_options={"wait_for_job": False})
+    monitor_fg.insert(monitor_df, write_options={"wait_for_job": False})
 
     print("Finished insertion")
 

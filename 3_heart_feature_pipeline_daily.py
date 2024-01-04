@@ -85,7 +85,19 @@ def g():
     print(heart_samples)
 
     heart_fg = fs.get_feature_group(name="heart", version=1)
-    heart_fg.insert(heart_samples)
+
+    # Get all user data
+    user_fg = fs.get_feature_group(name="heart_user_dataset", version=1)
+    df = user_fg.read()
+    df["timestamp"] = pd.to_datetime(datetime.now())
+    print(df)
+
+    # Append synthetic data and user data to feature group
+    all_samples = pd.concat([df, heart_samples])
+
+    print(all_samples)
+
+    heart_fg.insert(all_samples, write_options={"wait_for_job": False})
 
 if __name__ == "__main__":
     if LOCAL == True:

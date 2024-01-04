@@ -6,3 +6,5 @@ train
 monitor
 __pycache__
 .ipynb_checkpoints
+*.png
+original.pkl
